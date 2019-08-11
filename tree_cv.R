@@ -23,6 +23,7 @@ for(i in 1:10){
   aucscores[i]<-tree_auc
   f1scores[i]<-F1_Score(test_1$match,tree_x,positive=1)
 }
+df
 aucscores
 f1scores
 accuracy
