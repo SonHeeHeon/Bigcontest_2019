@@ -1,0 +1,74 @@
+﻿< 기상 유도 항공지연 논문 정리 >
+
+1.
+
+- 좋지못한 날씨 상태(악천후)으로 인한 비행기 지연을 데마나 놀라운 머신러닝을 이용해 예측하는 논문 
+- 2005~2015 동안의 미국내 비행 데이터와 날씨데이터를 이용해 모델을 트레인 시킴
+- imbalenced 한 트레이닝 데이터를 해결하기 위해 샘플링 기술이 이용됨
+  (1,0의 균형이 맞지않아서 그런듯) 
+  => 우리 데이터는 가치있는 정확도(비용 대비 정확도)를 원하는게 아니라 그냥 단순한 예측 정확도를 높이는거면 민감도 특이도 이런거 상관없이 accuracy만 보면돼서 할 필요 없지않나?? 일단 단순한 accuracy 만 중요한지 이부분에 대해선 문의했으니 답변을 보고 판단하기!
+  => 우헌이 말로는 교육받는곳 실무자가 이 기법 잘 안쓴다고 함! sample 한 데이터가 실제 데이터가 아니니까 결과가 좋아져도 설명하기가 힘드므로( 근데 목적이 비용이라는 관점에서 보면 쓸수 있는거 아닐까? )
+- Dicision tree/random forest/adaboost/knn 을 이용 (roc 커브와 accuracy로 비교)
+- 이건 도착 지연에 관한 논문임 
+
+2. introduction
+
+- bts(이동수단 통계 부서) 에 의하면 20%의 비행기가 지연됨 => 수십만달러의 비용이 발생
+  -> 5가지 메인 이유 : 1. air carrier(?) 2. 날씨 3. national aviation system(국가 항공제도 => 각국에 항공 상황(날씨,등등?)에 따라 지연이 발생 할수 있는 그런 제도) 4. 늦게 도착한 항공기 5. security(보안?)
+  (날씨는 main 중의 하나의 이유 이면서도 다른 이유와도 연관이 있는 요인! => 지연의 약 40%를 차지)
+- witi로 예측을 많이하는데 머신러닝으로는 예측 한게 잘 없음 => witi(weather impacted traffic index) : 항공지연에 핵심영향을 주는 날씨요인들을 이용해 만든 모델 => 겁나 어렵고 뭐라카는지 모르겠음 / 데이터가 많아졌기도 하고 비선형적 문제가 많기때문에 머신러닝이 그런 부분을 잘 해결해주고 등등 좋다는 얘기들이 있다
+- " 예측 능력을 높이기 위해 각 공항의 기상 특성을 지리적 위치에서 포착하여 국가 항공 우주 시스템(NAS) 전체에서가 아닌 개별 출발지-목적지 쌍에 대해 모델을 교육했다. " => 중요한 문구인거 같은데 이해가 잘 안됨 : 항로(대기권)에서의 기상을 보지않고 출발지,목적지의 기상만 봤다는건가? 아니면 특정 출발지-목적지에 대한 모델을 만들어서 예측을 했다는건가? 무슨말이지??
+- weather forecast 정보와 항공 schedule 로 예측을 함
+
+3. methodology(방법론)
+
+- a . sampling
+  ▶ imbalenced data 이므로 sampling 을 함 (smote 기법 이용) => 75%정도의 비율의 데이터인데 sampling을 했음 => 아무리 비용에 대한 차이가 나도 75% 데이터를 imbalenced data 로 보는가? 
+  ▶ smote(synthetic minority over-sampling technique)  => minority class examples를 만들어 내는 over-sampling 접근법 => 일단 이건 우리가 imbalanced data라고 생각을 해야하는지를 먼저 알아보고 차후에 이 기법에 대해 생각해보자
+- b . supervised learning classifier
+  ▶ decision tree / random forest / Adaboost / kNN 
+- c . model evaluation
+  ▶ 10-fold cross validation / roc curve 
+
+4. predicion model(
+- a . data collection
+  여기선 날씨데이터를 시간단위로 세계 지역들의 wind / cloud height / visibility(이건 어떻게?) / 온도 / 기압 / 강수량 등등 을 수집
+- b . data processing
+  45개의 공항 데이터와 그에 따른 날씨 데이터를 연결 
+  여기는 15분 이상 넘어 가면 지연 / 결항되거나 우회된 것도 지연이라고 침 => 우리 데이터는?
+  " low ceiling/visibility conditions, high surface winds and precipitations make an aircraft landing difﬁcult "
+    낮은 항공기의 상승한도, 좋지 않은 시야, 높은 표면 바람 및 강수량 은 비행기가 착륙하는것에 있어 어려움을 줌 => 이 데이터는 도착 지연에 관한것이므로 착륙에만 집중
+  => 이에 관련된 기상 요소들을 변수로 이용
+     • Wind Direction Angle [deg] (바람 방향 및 각도) 
+     • Wind Speed Rate [m/s] (바람 속도)
+     • Visibility [m] (가시성 => 우째 측정? 무슨 기상데이터를 이용해야 알 수 있는거지?)
+     • Precipitation [mm] (강수량) 
+     • Snow Depth [cm] (적설량?) 깊이
+     • Snow Accumulation [cm] (적설량?) 축적
+     • Weather Intensity Code 1:Light, 2:Moderate, 3:Heavy, 4:Vicinity (날씨 강도 코드) => 16~20일은 날씨 예측이 되도 그 이후는 예측정확도가 많이 낮아서 20~30일동안의 날씨는 이 코드로 대략 예측해서 이용해도 될듯..? 모델을 아무래도 2개를 만들어야 될듯(7월 16~20 / 20~30 )
+     • Precipitation Code 1:Drizzle, 2:Rain, 3:Snow, 4:Snow Grains, 5:Ice Crystals, 6:Ice Pellets, 7:Hail, 8:Small Hail and/or Snow Pellets, 9:Unknown 
+     ( 강수량 코드 )
+     • Obscuration Code 1:Mist, 2:Fog, 3:Smoke, 4:Volcanic Ash, 5:Widespread Dust, 6:Sand, 7:Haze, 8:Spray 
+     ( 안개 같은거 코드 )
+     ==> 범주로 많이 이용을 했음 ( 날씨를 어떻게 이용할지에 대해 잘 생각 해봐야 될듯 => 아무래도 가장 중요한 변수이니 )
+   몇몇 변수에 의해 좌지우지 되는것을 막기위해 정규화를 해줌 => 정규화에 이런 역할이 있었는가?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   

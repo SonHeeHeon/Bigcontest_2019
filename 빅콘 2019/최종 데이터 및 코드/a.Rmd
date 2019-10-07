@@ -1,0 +1,153 @@
+---
+title: "modeling1"
+author: "Jong Soo"
+date: '2019 9 6 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 라이브러리 세팅
+
+```{r}
+{
+  if(!require(caret)) {install.packages("caret")};  library(caret);
+  if(!require(MLmetrics)) {install.packages("MLmetrics")};  library(MLmetrics);
+  if(!require(e1071)) {install.packages("e1071")};  library(e1071);
+  if(!require(kknn)) {install.packages("kknn")};  library(kknn);
+  if(!require(dplyr)) {install.packages("dplyr")};  library(dplyr);
+  if(!require(ROCR)) {install.packages("ROCR")};  library(ROCR);
+  if(!require(randomForest)) {install.packages("randomForest")};  library(randomForest);
+  if(!require(doParallel)) {install.packages("doParallel")};  library(doParallel);
+  if(!require(parallel)) {install.packages("parallel")};  library(parallel);
+  if(!require(doSNOW)) {install.packages("doSNOW")};  library(doSNOW);
+  if(!require(kernlab)) {install.packages("kernlab")};  library(kernlab);
+  if(!require(naivebayes)) {install.packages("naivebayes")};  library(naivebayes);
+  if(!require(xgboost)) {install.packages("xgboost")};  library(xgboost);
+}
+```
+### 변수 선택 
+
+```{r}
+colnames(D)
+D_model_data <- D[,c("dly","STT_score","FLO_score","FLT_rank","YY_score",
+"MM_score","DY_score","ARP_score")]
+```
+
+## Cross validation
+## 5 fold
+### 각 기법들의 auc / accuracy 를 입력할 공간 마련
+```{r, echo=FALSE}
+k=5   
+{
+  glm_aucscores<-vector(length=k)
+  glm_accuracy<-vector(length=k)
+  knn_aucscores<-vector(length=k)
+  knn_accuracy<-vector(length=k)
+  bag_aucscores<-vector(length=k)
+  bag_accuracy<-vector(length=k)
+  ranf_aucscores<-vector(length=k)
+  ranf_accuracy<-vector(length=k)
+  gb_aucscores<-vector(length=k) # 그래디언트 부스팅
+  gb_accuracy<-vector(length=k)
+  xgb_aucscores<-vector(length=k)
+  xgb_accuracy<-vector(length=k)
+  svml_aucscores<-vector(length=k)
+  svml_accuracy<-vector(length=k)
+  svmr_aucscores<-vector(length=k)
+  svmr_accuracy<-vector(length=k)
+  naive_aucscores<-vector(length=k)
+  naive_accuracy<-vector(length=k)
+  naivek_aucscores<-vector(length=k)
+  naivek_accuracy<-vector(length=k)
+}
+```
+
+
+
+
+```{r, echo=FALSE}
+{
+  set.seed(1)                       ## seed 추가 
+  x<-createFolds(D$dly,k=5)
+  test_D<-list()
+  train_D<-list()
+  for(i in 1:5){
+    test_D[[i]]<-D[x[[i]],]
+    train_D[[i]]<-D[-x[[i]],]
+  }
+}
+## glm
+for( i in 1:5 ){
+  start <- Sys.time(); print(start);
+  train<-train_D[[i]]
+  test<-test_D[[i]]
+  pdt <- p_delay_time_function(train,test)
+  train$p_delay_time <- pdt[[1]]
+  test$p_delay_time <- pdt[[2]]
+  model_glm<-glm(DLY~STT_score+FLO_score+FLT_rank+YY_score+MM_score+DY_score+ARP_score+p_delay_time,family='binomial',data=train) 
+  # summary(model_glm)
+  # step은 생략
+  p <- predict(model_glm, newdata=test, type="response")
+  pr <- prediction(p, test$DLY)
+  auc <- performance(pr, measure = "auc")
+  glm_aucscores[i]<-auc@y.values[[1]]
+  print(Sys.time()-start)
+}
+
+## naivek
+for( i in 1:5 ){
+  start <- Sys.time(); print(start);
+  train<-train_D[[i]]
+  test<-test_D[[i]]
+  pdt <- p_delay_time_function(train,test)
+  train$p_delay_time <- pdt[[1]]
+  test$p_delay_time <- pdt[[2]]
+  model_naivek=naive_bayes(DLY~STT_score+FLO_score+FLT_rankA+FLT_rankB+FLT_rankC+FLT_rankD+YY_score+MM_score+DY_score+ARP_score+p_delay_time,usekernel=T, data=train)
+  p<-predict(model_naivek,test,type="prob")
+  pr<-prediction(p[,2],test$dly)
+  auc<-performance(pr,measure="auc")
+  naivek_aucscores[i]<-auc@y.values[[1]]
+  print(Sys.time()-start)
+}
+
+## bagging
+for( i in 1:5 ){
+  start <- Sys.time(); print(start);
+  train<-train_D[[i]]
+  test<-test_D[[i]]
+  pdt <- p_delay_time_function(train,test)
+  train$p_delay_time <- pdt[[1]]
+  test$p_delay_time <- pdt[[2]]
+  model_bag <- randomForest(DLY~STT_score+FLO_score+FLT_rankA+FLT_rankB+FLT_rankC+FLT_rankD+YY_score+MM_score+DY_score+ARP_score+p_delay_time,data=train,mtry=(11-1),importance=TRUE,ntree=50) 
+  p<-predict(model_bag,test,type="prob")    
+  pr<-prediction(p[,2],test$DLY)
+  auc<-performance(pr,measure="auc")
+  bag_aucscores[i]<-auc@y.values[[1]]
+  print(Sys.time()-start)
+}
+
+## knn
+for( i in 1:5 ){
+  start <- Sys.time(); print(start);
+  train<-train_D[[i]]
+  test<-test_D[[i]]
+  pdt <- p_delay_time_function(train,test)
+  train$p_delay_time <- pdt[[1]]
+  test$p_delay_time <- pdt[[2]]
+  
+  set.seed(5)
+  model_knn<-train.kknn(DLY~STT_score+FLO_score+FLT_rankA+FLT_rankB+FLT_rankC+FLT_rankD+YY_score+MM_score+DY_score+ARP_score+p_delay_time,train,ks=seq(3,50,by=4),scale=TRUE,kcv=5)  
+  # scale 해야되는가?? => knn 다시 알아보기 train 으로 좋은 k 를 설정 하는 기준을 auc로 하면 더좋아질수 잇더 .
+  best_k<-model_knn$best.parameters$k
+  knn_pred<-kknn(DLY~STT_score+FLO_score+FLT_rankA+FLT_rankB+FLT_rankC+FLT_rankD+YY_score+MM_score+DY_score+ARP_score+p_delay_time,train,test,k=best_k,scale=TRUE)
+  p <- knn_pred$prob[,2]
+  pr <- prediction(p, test$DLY)
+  auc <- performance(pr, measure = "auc")
+  knn_aucscores[i]<-auc@y.values[[1]]
+  print(Sys.time()-start)
+}
+
+```

@@ -1,0 +1,94 @@
+---
+title: "data"
+author: "Jong Soo"
+date: '2019 9 4 '
+output: html_document
+---
+
+# 데이터 전처리 과정 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+- 데이터 불러오기 
+
+```{r}
+library(ggplot2)
+library(dplyr)
+rm(list=ls())
+AFSNT <- read.csv("C:/Users/John/Desktop/Flight/CSV/AFSNT.csv")
+AFSNT_DLY <- read.csv("C:/Users/John/Desktop/Flight/CSV/AFSNT_DLY.csv")
+```
+
+
+
+## 제출 데이터에 없는 편명은 지우기 
+
+```{r}
+# 987,709 rows -> 859,930 rows (127,779 rows deleted)
+AFSNT %>% filter(FLT %in% unique(AFSNT_DLY$FLT)) -> AFSNT
+
+```
+
+## 부정 기편 및 결항 제거 
+
+```{r, echo=FALSE}
+# 859,930 rows -> 850,625 rows (9,305 rows deleted)
+AFSNT %>% filter(CNL == "N") %>% filter(IRR == "N") -> AFSNT
+
+```
+
+## 제출 데이터에 계획시간 외에는 제거 
+
+```{r}
+# 850,625 rows -> 850,609 rows (16 rows deleted)
+AFSNT$hm_STT <- hm(AFSNT$STT)
+AFSNT %>% filter(hm_STT >= hm("06:00") & hm_STT <= hm("23:00")) -> AFSNT
+
+```
+
+## 이상치 제거 
+
+```{r}
+# 단순 오타 추정 
+
+# 파생 변수 및 이상치 제거 
+{
+  AFSNT$STT_hour <- sapply(strsplit(as.character(AFSNT$STT),":"),"[",1)
+  AFSNT$STT_minute <- sapply(strsplit(as.character(AFSNT$STT),":"),"[",2)
+  AFSNT$ATT_hour <- sapply(strsplit(as.character(AFSNT$ATT),":"),"[",1)
+  AFSNT$ATT_minute <- sapply(strsplit(as.character(AFSNT$ATT),":"),"[",2)
+  AFSNT$STT2 <- as.numeric(AFSNT$STT_hour) + as.numeric(AFSNT$STT_minute)/60
+  AFSNT$ATT2 <- as.numeric(AFSNT$ATT_hour) + as.numeric(AFSNT$ATT_minute)/60
+  AFSNT$delay_time <- AFSNT$ATT2 - AFSNT$STT2
+}
+
+# 지연 시간 이상치 ( 850,609 rows -> 850,588 rows )
+AFSNT %>% filter(!delay_time %in% sort(AFSNT$delay_time)[1:21]) -> AFSNT
+
+```
+
+## 출도착 안맞는거 제거
+
+```{r}
+
+# 출발 또는 도착만 존재하는 데이터 지우기  (850,588 rows -> 850,560 rows)
+
+AFSNT %>% group_by(FLT,SDT_YY,SDT_MM,SDT_DD) %>% summarise(n=n()) -> AFSNT_2
+AFSNT_2 %>% filter(n==1) %>% as.data.frame()-> AFSNT_3
+for ( i in 1:nrow(AFSNT_3)){
+  AFSNT<-AFSNT[!((AFSNT$SDT_YY==AFSNT_3$SDT_YY[i]) & (AFSNT$SDT_MM==AFSNT_3$SDT_MM[i]) & (AFSNT$SDT_DD==AFSNT_3$SDT_DD[i]) & (AFSNT$FLT==AFSNT_3$FLT[i])),] 
+}
+
+```
+
+#3 출 도착 나누기 
+
+```{r}
+# A (426,485 rows)
+AFSNT %>% filter(AOD=="A") -> A
+# D (426,569 rows)
+AFSNT %>% filter(AOD=="D") -> D
+```
+

@@ -1,0 +1,179 @@
+---
+title: "data2"
+author: "Jong Soo"
+date: '2019 9 5 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 외생 변수 생성 
+
+```{r}
+## 외생 변수 추가 
+
+weather=read.csv("F:/빅콘 코드/weather.csv",header=T) #날씨데이터
+weather$date <- paste0(sprintf("%04d",weather$yyyy),sprintf("%02d",weather$mm),sprintf("%02d",weather$dd))
+
+AFSNT$date0 <- paste0(sprintf("%04d",AFSNT$SDT_YY),sprintf("%02d",AFSNT$SDT_MM),sprintf("%02d",AFSNT$SDT_DD))
+
+AFSNT %>% mutate(wea = ifelse(date0 %in% weather$date, 1, 0)) %>% as.data.frame -> AFSNT
+
+```
+
+
+## 출 도착 나누기 
+
+```{r}
+# A (424,409 rows)
+AFSNT %>% filter(AOD=="A") -> A
+# D (424,409 rows)
+AFSNT %>% filter(AOD=="D") -> D
+```
+
+
+## 파생 변수 생성 
+
+```{r cars}
+
+variable_scoring = function(x) {
+    # stt 
+  x %>% group_by(STT3) %>% summarise(STT_score=round(mean(dly)*10,1)) %>% as.data.frame() -> STT_score
+  
+  for(i in 1:nrow(STT_score)){
+    x$STT_score[x$STT3==STT_score$STT3[i]] <-  STT_score$STT_score[i]
+  }
+  
+  # flo
+  x %>% group_by(FLO) %>% summarise(FLO_score=round(mean(dly)*10,1)) %>% as.data.frame() -> FLO_score
+  
+  for(i in 1:nrow(FLO_score)){
+    x$FLO_score[x$FLO==FLO_score$FLO[i]] <-  FLO_score$FLO_score[i]
+  }
+  
+  # flt
+  x %>% group_by(FLT,SDT_DY) %>% summarise(FLT_score=round(mean(dly)*10,1),n=n()) %>% as.data.frame() -> temp_FLT_score
+  
+  temp_FLT_score %>% filter(n >= 50) -> temp1
+  temp_FLT_score %>% filter(n < 50) -> temp2
+  index <- quantile(temp1$FLT_score, probs=c(0,0.2,0.4,0.6,0.8,1))
+  
+  temp1 %>% mutate(FLT_rank=ifelse(FLT_score >= index[5],"E",
+                                   ifelse(FLT_score >= index[4],"D",
+                                          ifelse(FLT_score >= index[3],"C",
+                                                 ifelse(FLT_score >= index[2],"B","A"))))) -> temp1
+  
+  qt <- quantile(temp2$FLT_score, probs=c(0,0.33,0.66,1))
+  temp2 %>% mutate(FLT_rank= ifelse(FLT_score >= qt[3],"D",
+                                    ifelse(FLT_score >= qt[2],"C","B"))) -> temp2
+  FLT_score <- rbind(temp1,temp2)
+  
+  
+  temp_paste1 <- paste(FLT_score$FLT,FLT_score$SDT_DY)
+  temp_paste2 <- paste(x$FLT,x$SDT_DY)
+  
+  temp_unique <- unique(FLT_score$FLT_rank)
+  
+  for(i in temp_unique){
+    tempinfo <- temp_paste1[FLT_score$FLT_rank==i]
+    x$FLT_rank[temp_paste2 %in% tempinfo] <-  i
+    # print(i)
+  }
+  
+  ### 원 핫 인코딩 
+  temp3 <- model.matrix(~FLT_rank,data=x)[,-1]
+  x$FLT_rankA <- as.numeric(x$FLT_rank=="A")
+  x <- data.frame(x,temp3)
+  
+  
+  # yy
+  x %>% group_by(SDT_YY) %>% summarise(YY_score=round(mean(dly)*10,1)) %>% as.data.frame() -> YY_score   
+  for(i in 1:nrow(YY_score)){
+    x$YY_score[x$SDT_YY==YY_score$SDT_YY[i]] <-  YY_score$YY_score[i]
+  }
+  
+  ## mm
+  x %>% group_by(SDT_MM) %>% summarise(MM_score=round(mean(dly)*10,1)) %>% as.data.frame() -> MM_score   
+  for(i in 1:nrow(MM_score)){
+    x$MM_score[x$SDT_MM==MM_score$SDT_MM[i]] <-  MM_score$MM_score[i]
+  }
+  
+  ## dy
+  x %>% group_by(SDT_DY) %>% summarise(DY_score=round(mean(dly)*10,1)) %>% as.data.frame() -> DY_score   
+  for(i in 1:nrow(DY_score)){
+    x$DY_score[x$SDT_DY==DY_score$SDT_DY[i]] <-  DY_score$DY_score[i]
+  }
+  
+  ## arp
+  x %>% group_by(ARP) %>% summarise(ARP_score=round(mean(dly)*10,1)) %>% as.data.frame() -> ARP_score   
+  for(i in 1:nrow(ARP_score)){
+    x$ARP_score[x$ARP==ARP_score$ARP[i]] <-  ARP_score$ARP_score[i]
+  }
+  
+  ## odp
+  x %>% group_by(ODP) %>% summarise(ODP_score=round(mean(dly)*10,1)) %>% as.data.frame() -> ODP_score   
+  for(i in 1:nrow(ODP_score)){
+    x$ODP_score[x$ODP==ODP_score$ODP[i]] <-  ODP_score$ODP_score[i]
+  }
+    
+  ## arp_odp
+  (x %>% mutate(ARP_ODP = paste(ARP,ODP)) -> x) %>% 
+    group_by(ARP_ODP) %>% summarise(ARP_ODP_score=round(mean(dly)*10,1)) %>% as.data.frame() -> ARP_ODP_score
+  for(i in ARP_ODP_score$ARP_ODP_score){
+    tempinfo <- ARP_ODP_score$ARP_ODP[ARP_ODP_score$ARP_ODP_score==i]
+    x$ARP_ODP_score[x$ARP_ODP %in% tempinfo] <-  i
+  }
+
+  ## flo_reg
+  x %>% group_by(FLO) %>% summarise(flo_reg_n = length(unique(REG))) -> flo_reg_n
+
+  for (i in 1:nrow(flo_reg_n)){
+    x$flo_reg_n[x$FLO == flo_reg_n$FLO[i]] <- flo_reg_n$flo_reg_n[i]
+  }
+  
+  ## Season
+  x %>% mutate(Season = ifelse(SDT_MM<=2,"Winter",
+                                   ifelse(SDT_MM <= 5,"Spring",
+                                          ifelse(SDT_MM <= 8,"Summer",
+                                                 ifelse(SDT_MM <= 11,"fall","Winter"))))) -> x
+  x %>% group_by(Season) %>% summarise(Season_score=round(mean(dly)*10,2)) -> Season_score
+  for(i in 1:nrow(Season_score)){
+    x$Season_score[x$Season==Season_score$Season[i]] <-  Season_score$Season_score[i]
+  }
+  
+  ## AM_PM
+  x %>% mutate(AM_PM = ifelse(as.numeric(STT2)<=12,0,1)) -> x
+  
+  return(x)
+}
+
+D <- variable_scoring(D)
+A <- variable_scoring(A)
+
+## p_delay_time
+p_delay_time_function = function(train,test=NA){
+  
+  train_x_num <- train %>% select(-delay_time,-dly) %>% data.matrix
+  train_y_num <- train$delay_time
+  
+  test_x_num <- test %>% select(-delay_time,-dly) %>% data.matrix
+  test_y_num <- test$delay_time
+  
+  cv_model <- xgboost(data=train_x_num,label=train_y_num,
+                     nfold = 5,nrounds = 200,early_stopping_rounds = 150,
+                     objective='reg:linear', verbose = F,prediction = T)
+  
+  p_delay_time <- list()
+  
+  p_delay_time[[1]] <- predict(cv_model,train_x_num)
+
+  if(sum(is.na(test))!=1){
+    p_delay_time[[2]] <- predict(cv_model,test_x_num)
+  }
+  return(p_delay_time)
+}
+
+
+```

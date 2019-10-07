@@ -1,0 +1,126 @@
+---
+title: "data"
+author: "Jong Soo"
+date: '2019 9 4 '
+output: html_document
+---
+
+# 데이터 전처리 과정 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+- 데이터 불러오기 
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+rm(list=ls())
+AFSNT <- read.csv("F:/빅콘 코드/AFSNT.csv")
+AFSNT_DLY <- read.csv("F:/빅콘 코드/AFSNT_DLY.csv")
+```
+# 데이터 분할 전 파생 변수 
+
+```{r}
+{
+  AFSNT$dly <- as.numeric(AFSNT$DLY=="Y")
+  AFSNT$STT_hour <- sapply(strsplit(as.character(AFSNT$STT),":"),"[",1)
+  AFSNT$STT_minute <- sapply(strsplit(as.character(AFSNT$STT),":"),"[",2)
+  AFSNT$ATT_hour <- sapply(strsplit(as.character(AFSNT$ATT),":"),"[",1)
+  AFSNT$ATT_minute <- sapply(strsplit(as.character(AFSNT$ATT),":"),"[",2)
+  AFSNT$STT2 <- as.numeric(AFSNT$STT_hour) + as.numeric(AFSNT$STT_minute)/60
+  AFSNT$ATT2 <- as.numeric(AFSNT$ATT_hour) + as.numeric(AFSNT$ATT_minute)/60
+  # 계획 시간을 반올림 한 변수 
+  AFSNT$STT3 <- as.factor(round(AFSNT$STT2))
+  AFSNT$date <- ymd(paste(AFSNT$SDT_YY,AFSNT$SDT_MM,AFSNT$SDT_DD))
+  
+  # 해당 날짜의 공항에 시간당 운항 개수를 담은 파생 변수 
+  AFSNT %>% group_by(date,ARP,STT3) %>% summarise(n=n()) -> temp1
+  AFSNT$temp <- paste(AFSNT$date,AFSNT$ARP,AFSNT$STT3)
+  temp1$temp <- paste(temp1$date,temp1$ARP,temp1$STT3)
+  temp2 <- unique(temp1$n)
+  for(i in temp2){
+    tempinfo <- temp1$temp[temp1$n==i]
+    AFSNT$ARP_STT3_n[AFSNT$temp %in% tempinfo] <- i
+    # print(i)
+  }
+  AFSNT$temp <- NULL
+  rm(temp1,temp2,tempinfo)
+  # 실제 지연 시간 (음수로 나타난 경우는 나중에 전처리 과정에서 다 삭제 됨.)
+  AFSNT$delay_time <- AFSNT$ATT2 - AFSNT$STT2
+}
+
+```
+
+
+## 제출 데이터에 없는 편명은 지우기 
+
+```{r}
+# 987,709 rows -> 859,930 rows (127,779 rows deleted)
+AFSNT %>% filter(FLT %in% unique(AFSNT_DLY$FLT)) -> AFSNT
+
+```
+
+## 부정 기편 및 결항 제거 
+
+```{r, echo=FALSE}
+# 859,930 rows -> 850,625 rows (9,305 rows deleted)
+AFSNT %>% filter(CNL == "N") %>% filter(IRR == "N") -> AFSNT
+
+```
+
+## 제출 데이터에 계획시간 외에는 제거 
+
+```{r}
+# 850,625 rows -> 850,609 rows (16 rows deleted)
+AFSNT$hm_STT <- hm(AFSNT$STT)
+AFSNT %>% filter(hm_STT >= hm("06:00") & hm_STT <= hm("23:00")) -> AFSNT
+
+```
+
+
+## 이상치 제거 
+
+```{r}
+# 단순 오타 추정 
+
+# 이상치 제거 
+# 지연 시간 이상치 
+# 850,609 rows -> 850,588 rows  ( 21 rows deleted )
+AFSNT %>% filter(!delay_time %in% sort(AFSNT$delay_time)[1:21]) -> AFSNT
+
+# 850,588 rows -> 849,151 rows ( 1,437 rows deleted )
+# 지연 시간이 3시간 이상인 것들은 이상치로 판단
+AFSNT %>% filter(delay_time <3) -> AFSNT
+
+# 제주도 활주로 비행기 사고 
+# 849,151 rows -> 848,270 rows ( 881 rows deleted )
+AFSNT %>% filter(date != ymd("20170929")) -> AFSNT
+
+```
+
+
+## 출도착 안맞는거 제거
+
+```{r}
+# 출발 또는 도착만 존재하는 데이터 지우기  
+# 설날 처럼 특수한 날에 편명이 두번 있던 날과 출 도착이 안 맞는 데이터 삭제 
+# 848,270 rows -> 847,946 rows ( 324 rows deleted )
+AFSNT %>%
+  group_by(FLT,SDT_YY,SDT_MM,SDT_DD) %>%
+  summarise(n=n()) %>% 
+  filter(n==1 | n==4) %>%
+  as.data.frame()-> temp
+
+index <- NULL
+for( i in 1:nrow(temp) ){
+  index <- c(index,which((AFSNT$SDT_YY==temp$SDT_YY[i]) & (AFSNT$SDT_MM==temp$SDT_MM[i]) & (AFSNT$SDT_DD==temp$SDT_DD[i]) & (AFSNT$FLT==temp$FLT[i])))
+  # print(i)
+}
+AFSNT <- AFSNT[-index,]
+
+```
+
+
